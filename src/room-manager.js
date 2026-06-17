@@ -60,6 +60,13 @@ class RoomManager {
     }
   }
 
+  clearAnnotationsByAuthor(code, authorId) {
+    const room = this.rooms.get(code);
+    if (room) {
+      room.annotations = room.annotations.filter(a => a.authorId !== authorId);
+    }
+  }
+
   deleteAnnotation(code, annotationId) {
     const room = this.rooms.get(code);
     if (room) {

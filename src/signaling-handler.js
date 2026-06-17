@@ -64,6 +64,9 @@ class SignalingHandler {
       case 'clear-annotations':
         this.handleClearAnnotations(ws);
         break;
+      case 'clear-my-annotations':
+        this.handleClearMyAnnotations(ws);
+        break;
       case 'toggle-audio':
         this.handleToggleAudio(ws, msg);
         break;
@@ -241,6 +244,14 @@ class SignalingHandler {
     if (!room) return;
     this.roomManager.clearAnnotations(ws.roomCode);
     this.broadcastToRoom(ws.roomCode, { type: 'clear-annotations' });
+  }
+
+  handleClearMyAnnotations(ws) {
+    if (!ws.roomCode) return;
+    const room = this.roomManager.getRoom(ws.roomCode);
+    if (!room) return;
+    this.roomManager.clearAnnotationsByAuthor(ws.roomCode, ws.id);
+    this.broadcastToRoom(ws.roomCode, { type: 'clear-annotations', selfOnly: true, authorId: ws.id });
   }
 
   handleToggleAudio(ws, msg) {

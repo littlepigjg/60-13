@@ -165,10 +165,16 @@
     annotation.receiveAnnotation(msg.annotation);
   });
 
-  signaling.on('clear-annotations', () => {
-    annotation.annotations = [];
-    annotation.render();
-    UI.toast('标注已被清空');
+  signaling.on('clear-annotations', (msg) => {
+    if (msg && msg.selfOnly && msg.authorId) {
+      annotation.clearRemote(true, msg.authorId);
+      if (msg.authorId === signaling.clientId) {
+        UI.toast('已清空您的标注');
+      }
+    } else {
+      annotation.clearRemote(false);
+      UI.toast('标注已被清空');
+    }
   });
 
   signaling.on('disconnected', () => {
@@ -184,11 +190,20 @@
   }
 
   function setupAnnotationTools(ann) {
+    const eraserOptions = $('#eraserOptions');
+    const selfOnlyToggle = $('#selfOnlyToggle');
+    const clearModal = $('#clearModal');
+
     $$('.tool-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         $$('.tool-btn').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
         ann.setTool(btn.dataset.tool);
+        if (btn.dataset.tool === 'eraser') {
+          eraserOptions.style.display = 'flex';
+        } else {
+          eraserOptions.style.display = 'none';
+        }
       });
     });
     $$('.color-swatch').forEach((sw) => {
@@ -205,9 +220,44 @@
       strokeValue.textContent = v;
       ann.setStroke(v);
     });
+
+    $$('.mode-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        $$('.mode-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        ann.setEraserMode(btn.dataset.mode);
+      });
+    });
+
+    selfOnlyToggle.addEventListener('change', () => {
+      ann.setEraserSelfOnly(selfOnlyToggle.checked);
+    });
+
     $('#undoBtn').addEventListener('click', () => ann.undo());
     $('#clearBtn').addEventListener('click', () => {
-      if (confirm('确定清空所有标注吗？')) ann.clearAll();
+      clearModal.style.display = 'flex';
+    });
+
+    $('#clearAllBtn').addEventListener('click', () => {
+      clearModal.style.display = 'none';
+      ann.clearAll(false);
+      UI.toast('已清空所有人的标注');
+    });
+
+    $('#clearMineBtn').addEventListener('click', () => {
+      clearModal.style.display = 'none';
+      ann.clearAll(true);
+      UI.toast('已清空您的标注');
+    });
+
+    $('#clearCancelBtn').addEventListener('click', () => {
+      clearModal.style.display = 'none';
+    });
+
+    clearModal.addEventListener('click', (e) => {
+      if (e.target === clearModal) {
+        clearModal.style.display = 'none';
+      }
     });
   }
 

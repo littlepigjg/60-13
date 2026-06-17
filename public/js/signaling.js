@@ -94,6 +94,10 @@ class SignalingClient {
     this.send({ type: 'clear-annotations' });
   }
 
+  clearMyAnnotations() {
+    this.send({ type: 'clear-my-annotations' });
+  }
+
   toggleAudio(enabled) {
     this.send({ type: 'toggle-audio', enabled });
   }

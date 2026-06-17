@@ -84,6 +84,23 @@
         <span id="strokeValue" class="stroke-value">3</span>
       </div>
 
+      <div class="eraser-options" id="eraserOptions" style="display:none;">
+        <div class="option-row">
+          <label class="option-label">橡皮模式</label>
+          <div class="mode-switch">
+            <button class="mode-btn active" data-mode="point">点选</button>
+            <button class="mode-btn" data-mode="rect">框选</button>
+          </div>
+        </div>
+        <div class="option-row">
+          <label class="option-label">只删自己</label>
+          <label class="switch">
+            <input type="checkbox" id="selfOnlyToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
       <div class="action-row">
         <button id="undoBtn" class="small-btn">撤销</button>
         <button id="clearBtn" class="small-btn danger">清空全部</button>
@@ -96,6 +113,18 @@
     </div>
   </aside>
 </main>
+
+<div class="modal-overlay" id="clearModal" style="display:none;">
+  <div class="modal">
+    <h3>清空标注</h3>
+    <p class="modal-desc">请选择要清空的标注范围：</p>
+    <div class="modal-actions">
+      <button class="modal-btn" id="clearAllBtn">清空所有人的</button>
+      <button class="modal-btn primary" id="clearMineBtn">只清空我自己的</button>
+      <button class="modal-btn cancel" id="clearCancelBtn">取消</button>
+    </div>
+  </div>
+</div>
 
 <script src="/js/utils.js"></script>
 <script src="/js/ui.js"></script>

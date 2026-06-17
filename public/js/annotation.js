@@ -14,6 +14,9 @@ class AnnotationManager {
     this.tempAnnotation = null;
     this.eraserRadius = 16;
     this._dpr = window.devicePixelRatio || 1;
+    this.eraserMode = 'point';
+    this.eraserSelfOnly = false;
+    this.selectionRect = null;
 
     this._setupCanvas();
     this._bindEvents();
@@ -67,7 +70,11 @@ class AnnotationManager {
     this.startY = y;
 
     if (this.currentTool === 'eraser') {
-      this._eraseAt(normX, normY);
+      if (this.eraserMode === 'rect') {
+        this.selectionRect = { startX: normX, startY: normY, endX: normX, endY: normY };
+      } else {
+        this._eraseAt(normX, normY);
+      }
       return;
     }
 
@@ -91,7 +98,12 @@ class AnnotationManager {
     const { x, y, normX, normY } = this.getCoords(e);
 
     if (this.currentTool === 'eraser') {
-      this._eraseAt(normX, normY);
+      if (this.eraserMode === 'rect') {
+        this.selectionRect.endX = normX;
+        this.selectionRect.endY = normY;
+      } else {
+        this._eraseAt(normX, normY);
+      }
       this.render();
       return;
     }
@@ -111,6 +123,10 @@ class AnnotationManager {
     this.isDrawing = false;
 
     if (this.currentTool === 'eraser') {
+      if (this.eraserMode === 'rect' && this.selectionRect) {
+        this._eraseInRect(this.selectionRect);
+        this.selectionRect = null;
+      }
       this._flushErasures();
       return;
     }
@@ -134,11 +150,17 @@ class AnnotationManager {
     this.render();
   }
 
+  _filterByAuthor(annotations) {
+    if (!this.eraserSelfOnly || !this.signaling.clientId) return annotations;
+    return annotations.filter(a => a.authorId === this.signaling.clientId);
+  }
+
   _eraseAt(nx, ny) {
     const rect = this.canvas.getBoundingClientRect();
     const threshold = this.eraserRadius / Math.min(rect.width, rect.height);
-    for (let i = this.annotations.length - 1; i >= 0; i--) {
-      const a = this.annotations[i];
+    const candidates = this._filterByAuthor(this.annotations);
+    for (let i = candidates.length - 1; i >= 0; i--) {
+      const a = candidates[i];
       if (this._annotationNearPoint(a, nx, ny, threshold)) {
         if (!a._markedForDelete) {
           a._markedForDelete = true;
@@ -147,6 +169,38 @@ class AnnotationManager {
         }
       }
     }
+  }
+
+  _eraseInRect(r) {
+    const minX = Math.min(r.startX, r.endX);
+    const maxX = Math.max(r.startX, r.endX);
+    const minY = Math.min(r.startY, r.endY);
+    const maxY = Math.max(r.startY, r.endY);
+    const candidates = this._filterByAuthor(this.annotations);
+    for (let i = candidates.length - 1; i >= 0; i--) {
+      const a = candidates[i];
+      if (this._annotationIntersectsRect(a, minX, minY, maxX, maxY)) {
+        if (!a._markedForDelete) {
+          a._markedForDelete = true;
+          if (!this._deletedIds) this._deletedIds = [];
+          this._deletedIds.push(a.id);
+        }
+      }
+    }
+  }
+
+  _annotationIntersectsRect(a, minX, minY, maxX, maxY) {
+    if (a.type === 'pen' && a.points) {
+      return a.points.some(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY);
+    }
+    if (a.type === 'circle' || a.type === 'rect' || a.type === 'line' || a.type === 'arrow') {
+      const sX = Math.min(a.startX, a.endX);
+      const sY = Math.min(a.startY, a.endY);
+      const eX = Math.max(a.startX, a.endX);
+      const eY = Math.max(a.startY, a.endY);
+      return !(eX < minX || sX > maxX || eY < minY || sY > maxY);
+    }
+    return false;
   }
 
   _flushErasures() {
@@ -209,10 +263,28 @@ class AnnotationManager {
     this.render();
   }
 
-  clearAll() {
-    this.annotations = [];
+  clearAll(selfOnly = false) {
+    if (selfOnly && this.signaling.clientId) {
+      const myIds = this.annotations
+        .filter(a => a.authorId === this.signaling.clientId)
+        .map(a => a.id);
+      if (myIds.length === 0) return;
+      this.annotations = this.annotations.filter(a => a.authorId !== this.signaling.clientId);
+      this.signaling.clearMyAnnotations();
+    } else {
+      this.annotations = [];
+      this.signaling.clearAnnotations();
+    }
     this.render();
-    this.signaling.clearAnnotations();
+  }
+
+  clearRemote(selfOnly = false, authorId = null) {
+    if (selfOnly && authorId) {
+      this.annotations = this.annotations.filter(a => a.authorId !== authorId);
+    } else {
+      this.annotations = [];
+    }
+    this.render();
   }
 
   undo() {
@@ -226,7 +298,19 @@ class AnnotationManager {
 
   setTool(tool) {
     this.currentTool = tool;
-    this.canvas.style.cursor = tool === 'eraser' ? 'cell' : 'crosshair';
+    this.selectionRect = null;
+    this.canvas.style.cursor = tool === 'eraser' ? (this.eraserMode === 'rect' ? 'crosshair' : 'cell') : 'crosshair';
+  }
+
+  setEraserMode(mode) {
+    this.eraserMode = mode;
+    if (this.currentTool === 'eraser') {
+      this.canvas.style.cursor = mode === 'rect' ? 'crosshair' : 'cell';
+    }
+  }
+
+  setEraserSelfOnly(enabled) {
+    this.eraserSelfOnly = enabled;
   }
 
   setColor(color) {
@@ -248,6 +332,27 @@ class AnnotationManager {
     const all = [...this.annotations];
     if (this.tempAnnotation) all.push(this.tempAnnotation);
     all.forEach(a => this._drawAnnotation(a, rect));
+    if (this.selectionRect) {
+      this._drawSelectionRect(rect);
+    }
+  }
+
+  _drawSelectionRect(rect) {
+    const W = rect.width, H = rect.height;
+    const x = Math.min(this.selectionRect.startX, this.selectionRect.endX) * W;
+    const y = Math.min(this.selectionRect.startY, this.selectionRect.endY) * H;
+    const w = Math.abs(this.selectionRect.endX - this.selectionRect.startX) * W;
+    const h = Math.abs(this.selectionRect.endY - this.selectionRect.startY) * H;
+
+    this.ctx.save();
+    this.ctx.strokeStyle = 'rgba(99, 102, 241, 0.9)';
+    this.ctx.lineWidth = 2;
+    this.ctx.setLineDash([6, 4]);
+    this.ctx.strokeRect(x, y, w, h);
+    this.ctx.fillStyle = 'rgba(99, 102, 241, 0.1)';
+    this.ctx.setLineDash([]);
+    this.ctx.fillRect(x, y, w, h);
+    this.ctx.restore();
   }
 
   _drawAnnotation(a, rect) {
@@ -260,6 +365,10 @@ class AnnotationManager {
     this.ctx.lineWidth = a.stroke || 3;
     this.ctx.lineCap = 'round';
     this.ctx.lineJoin = 'round';
+
+    if (a._markedForDelete) {
+      this.ctx.globalAlpha = 0.3;
+    }
 
     const s = toPx(a.startX, a.startY);
     const e = toPx(a.endX, a.endY);
